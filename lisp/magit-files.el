@@ -479,6 +479,7 @@ to `magit-dispatch'."
   "n" #'magit-blob-next
   "b" #'magit-blame-addition
   "r" #'magit-blame-removal
+  "d" #'magit-blame-file-removal
   "f" #'magit-blame-reverse
   "q" #'magit-bury-or-kill-buffer)
 

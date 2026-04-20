@@ -311,6 +311,7 @@ in `magit-blame-read-only-mode-map' instead."
   "N"   #'magit-blame-next-chunk-same-commit
   "b"   #'magit-blame-addition
   "r"   #'magit-blame-removal
+  "d"   #'magit-blame-file-removal
   "f"   #'magit-blame-reverse
   "B"   #'magit-blame
   "c"   #'magit-blame-cycle-style
@@ -804,6 +805,47 @@ not turn on `read-only-mode'."
   (magit-blame--pre-blame-setup  'removal)
   (magit-blame--run args))
 
+;;;###autoload(autoload 'magit-blame-file-removal "magit-blame" nil t)
+(transient-define-suffix magit-blame-file-removal ()
+  "Show the commit that removed the file shown in this blob buffer.
+Look for a commit in RANGE..HEAD with `--diff-filter=D', where RANGE
+is the blob's revision.  If no such commit exists, signal a user
+error.  Otherwise display a blame-style overlay attributing the
+entire buffer to the removing commit."
+  :if-nil 'buffer-file-name
+  (interactive)
+  (unless magit-buffer-file-name
+    (user-error "Only blob buffers can show file removal"))
+  (unless (magit-toplevel)
+    (magit--not-inside-repository-error))
+  (let* ((rev   magit-buffer-revision)
+         (file  (magit-file-relative-name nil (not magit-buffer-file-name)))
+         (range (if (and rev (not (equal rev "{index}")))
+                    (format "%s..HEAD" rev)
+                  "HEAD"))
+         (deleter (magit-git-string
+                   "log" "--diff-filter=D" "-n" "1" "--format=%H"
+                   range "--" file)))
+    (unless deleter
+      (user-error "File %s was not removed in %s" file range))
+    (magit-blame--show-file-removal deleter file)))
+
+(defun magit-blame--show-file-removal (rev file)
+  (when magit-blame-mode
+    (magit-blame--remove-overlays))
+  (unless magit-blame-mode
+    (magit-blame-mode 1))
+  (setq magit-blame-type 'removal)
+  (let* ((num-lines (max 1 (count-lines (point-min) (point-max))))
+         (chunk (magit-blame-chunk
+                 :orig-rev rev
+                 :orig-line 1
+                 :final-line 1
+                 :num-lines num-lines))
+         (revinfo (magit-blame--commit-alist rev)))
+    (oset chunk orig-file file)
+    (magit-blame--make-overlays (current-buffer) chunk revinfo)))
+
 ;;;###autoload(autoload 'magit-blame-reverse "magit-blame" nil t)
 (transient-define-suffix magit-blame-reverse (args)
   "For each line show the last revision in which it still exists."
@@ -955,6 +997,7 @@ instead of the hash, like `kill-ring-save' would."
   ["Actions"
    ("b" "Show commits adding lines" magit-blame-addition)
    ("r" "Show commits removing lines" magit-blame-removal)
+   ("d" "Show commit removing file" magit-blame-file-removal)
    ("f" "Show last commits that still have lines" magit-blame-reverse)
    ("m" "Blame echo" magit-blame-echo)
    ("q" "Quit blaming" magit-blame-quit)]
